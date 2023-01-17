@@ -13,6 +13,14 @@ filename = 'Events.nev';
 fullname = [datapath,'\',filename];
 BehStrcture = read_nev(fullname);
 
+%% Or read data from mats
+datapathMAT = "D:\CnF_photometry\FC\ALLmats";
+[file,path] = uigetfile(fullfile(datapathMAT,'*.mat'));
+AllStructure = load(fullfile(path,file));
+AllStructure = AllStructure.AllStructure;
+NeuralStructure = AllStructure.NeuralStructure;
+BehStrcture = AllStructure.BehStrcture;
+
 %% interpolate beh timestamps to neural time space
 interptOn = 1;
 InterpBehStrcture = Neural2BehTime(BehStrcture,NeuralStructure.T_CamTrigON);

@@ -72,18 +72,18 @@ end
 %% Photobleaching correction
 fprintf('Photobleaching correction... \n')
 % filter out lower signal related to photobleaching ==> (0.1 ~ 10 Hz)
-useAirPLS = 0;
-expFit = 1;
+useAirPLS = 1;
+expFit = 0;
 % airPLSPara = {5e9, 2, 0.1, 0.5, 50};
-airPLSPara = {1e15, 2, 0.1, 0.5, 50};
+airPLSPara = {1e13, 2, 0.1, 0.5, 50};
 if useAirPLS
     [~, signalBaseline] = airPLS(Chan_GCamP_denoised', airPLSPara{:});
-    signalBaseline = signalBaseline';
-    Chan_GCamP_highpass = Chan_GCamP_denoised - signalBaseline;
+    signalBaseline1 = signalBaseline';
+    Chan_GCamP_highpass = Chan_GCamP_denoised - signalBaseline1;
     [~, referenceBaseline] = airPLS(Chan_Iso_denoised', airPLSPara{:});
-    referenceBaseline = referenceBaseline';
-    Chan_Iso_highpass = Chan_Iso_denoised - referenceBaseline;
-elseif expFit == 1
+    signalBaseline2 = referenceBaseline';
+    Chan_Iso_highpass = Chan_Iso_denoised - signalBaseline2;
+elseif expFit
     signalFit = fit(NeuralTime, Chan_GCamP_denoised,'exp2');
     signalBaseline1 = signalFit(NeuralTime);
     Chan_GCamP_highpass = Chan_GCamP_denoised - signalBaseline1;
@@ -113,8 +113,10 @@ if wantplot
     plot(NeuralTime,Chan_Iso);
     plot(NeuralTime,Chan_GCamP_denoised);
     plot(NeuralTime,Chan_Iso_denoised);
-    plot(NeuralTime,signalBaseline1);
-    plot(NeuralTime,signalBaseline2);
+    if useAirPLS || expFit
+        plot(NeuralTime,signalBaseline1);
+        plot(NeuralTime,signalBaseline2);
+    end
     plot(NeuralTime,Chan_GCamP_highpass);
     plot(NeuralTime,Chan_Iso_highpass);
     xlim([NeuralTime(1), NeuralTime(end)]);
