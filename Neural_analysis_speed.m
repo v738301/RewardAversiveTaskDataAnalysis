@@ -35,7 +35,7 @@ end
 % AllStructure = load(fullfile(path,file));
 
 files = dir(fullfile(datapathMAT,'*.mat'));
-for session = 9:length(files)
+for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)] good speed
     path = files(session).folder; file = files(session).name;
     AllStructure = load(fullfile(path,file));
 
