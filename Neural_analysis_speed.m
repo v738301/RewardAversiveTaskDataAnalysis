@@ -2,7 +2,7 @@ clear all
 close all
 
 %% main path
-ProjectName = "FC";
+ProjectName = "UPS";
 if ProjectName == "FC"
     datapathDORIC = "D:\CnF_photometry\FC\Doric\";
     datapathBEH = "D:\CnF_photometry\FC\BEH\";
@@ -34,8 +34,20 @@ end
 % [file,path] = uigetfile(fullfile(datapathMAT,'*.mat'));
 % AllStructure = load(fullfile(path,file));
 
-files = dir(fullfile(datapathMAT,'*.mat'));
-for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)] good speed
+files = dir(fullfile(datapathMAT,'B*.mat'));
+Stimuli = "Shock";
+if ProjectName == "FC"
+    if Stimuli == "Shock"
+        SessionsID = [1,4:6,10:length(files)];
+    elseif Stimuli == "Reward"
+        SessionsID = [1:3,5,7,8,10:length(files)];
+    end
+elseif ProjectName == "UPS"
+    Stimuli = "Shock";
+    SessionsID = [1:length(files)];
+end
+
+for session = SessionsID(3) % [1:7,9:length(files)] % [1,4:6,10:length(files)] good speed
     path = files(session).folder; file = files(session).name;
     AllStructure = load(fullfile(path,file));
 
@@ -78,17 +90,17 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
     NeuralTriggerON = DataStrcture.NeuralTriggerON;
 
     %% Calculate Delta F over F
-    ProcessedNeuralStructure = Neural_analysis_Akam_DeltaFOverF(NeuralStructure,0,1);
+    ProcessedNeuralStructure = Neural_analysis_Akam_DeltaFOverF(NeuralStructure,0,0);
     %% Get signal from structure
     FS = ProcessedNeuralStructure.FS;
     NeuralTime = ProcessedNeuralStructure.NeuralTime;
-%     Chan_GCamP_denoised = ProcessedNeuralStructure.Chan_GCamP_denoised;
-%     Chan_Iso_denoised = ProcessedNeuralStructure.Chan_Iso_denoised;
-%     Estimated_motion_Bble = ProcessedNeuralStructure.Estimated_motion_Bble;
-%     MotionCorrected_GCamP_Bble = ProcessedNeuralStructure.MotionCorrected_GCamP_Bble;
-%     Chan_GCamP_highpass = ProcessedNeuralStructure.Chan_GCamP_highpass;
-%     Chan_Iso_highpass = ProcessedNeuralStructure.Chan_Iso_highpass;
-%     Estimated_motion = ProcessedNeuralStructure.Estimated_motion;
+    %     Chan_GCamP_denoised = ProcessedNeuralStructure.Chan_GCamP_denoised;
+    %     Chan_Iso_denoised = ProcessedNeuralStructure.Chan_Iso_denoised;
+    %     Estimated_motion_Bble = ProcessedNeuralStructure.Estimated_motion_Bble;
+    %     MotionCorrected_GCamP_Bble = ProcessedNeuralStructure.MotionCorrected_GCamP_Bble;
+    %     Chan_GCamP_highpass = ProcessedNeuralStructure.Chan_GCamP_highpass;
+    %     Chan_Iso_highpass = ProcessedNeuralStructure.Chan_Iso_highpass;
+    %     Estimated_motion = ProcessedNeuralStructure.Estimated_motion;
     MotionCorrected_GCamP = ProcessedNeuralStructure.MotionCorrected_GCamP;
     Chan_GCamP_Baseline = ProcessedNeuralStructure.Chan_GCamP_Baseline;
 
@@ -112,7 +124,7 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
     % Chan_GCamP_Baseline (-inf ~ 0.001)
 
     Delat_Chan_GCamP_highpass_HSR = MotionCorrected_GCamP./Chan_GCamP_Baseline;
-    
+
     %% denoise com
     Com_med = medfilt1(Com,FS_cam/4,'truncate'); %% 1/4 secs
 
@@ -221,6 +233,7 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
 
     plot(NeuralTime,Z_Delat_Chan_GCamP_highpass);
     plot(NeuralTime,Z_Com_speed);
+    plot(NeuralTime,zscore(Com_denoised(:,3)))
 
     Peak=max(Z_Delat_Chan_GCamP_highpass);
     EventName = {'Shock','Sound1','IR1','IR2','WP1','WP2'};
@@ -269,11 +282,17 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
         end
     end
 
-    NonOverlapping = 1;
-    SpeacialTime = 0;
-
-    % Baselines in secs
-    BL = 20;
+    if Stimuli == "Shock"
+        NonOverlapping = 1;
+        SpeacialTime = 0;
+        % Baselines in secs
+        BL = 20;
+    elseif Stimuli == "Reward"
+        NonOverlapping = 1;
+        SpeacialTime = 1;
+        % Baselines in secs
+        BL = 0;
+    end
     BL2 = 5; % Baselines = (CS_Time-(BaselineWind+BaselineWind2)):(CS_Time-(BaselineWind))
     BaselineWind=round(BL*FS);
     BaselineWind2=round(BL2*FS);
@@ -420,7 +439,7 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
     Z_Delat_Chan_GCamP_highpass = zscore(Delat_Chan_GCamP_highpass);
     Z_Com_speed = Z_Com_speed;
 
-    figure; scatter3(Com_denoised(:,1),Com_denoised(:,2),Com_denoised(:,3),1,Z_Delat_Chan_GCamP_highpass)
+    figure; scatter3(Com_denoised(:,1),Com_denoised(:,2),Com_denoised(:,3),1,Z_Delat_Chan_GCamP_highpass);
     figure; scatter3(Com_denoised(:,1),Com_denoised(:,2),Com_denoised(:,3),1,Com_speed)
 
     %%  shock-speed Correlation within shock
@@ -541,149 +560,208 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
     ylabel('Neural')
     linkaxes([ax(1),ax(2)],'x')
 
-    %% In reward stage
-    % Get event TS % EventName = {'Shock','Sound1','WP1','WP2','IR1ON','IR2ON'};
-    EventID = 2;
-    EventTS = EventsON{EventID};
-    CSidx=[];
-    for i=1:length(EventTS)
-        [~, CSidx(i,1)]=min(abs(NeuralTime(:,:)-EventTS(i)));
+    if ProjectName == "FC"
+        %% In reward stage
+        % Get event TS % EventName = {'Shock','Sound1','WP1','WP2','IR1ON','IR2ON'};
+        EventID = 2;
+        EventTS = EventsON{EventID};
+        CSidx=[];
+        for i=1:length(EventTS)
+            [~, CSidx(i,1)]=min(abs(NeuralTime(:,:)-EventTS(i)));
+        end
+        RewardStageTimeIndex = [1:CSidx(1)]';
+        OutRewardStageTimeIndex = [CSidx(1)+1:numel(NeuralTime)]';
+
+        bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
+        DisIndSpeed = discretize(Z_Com_speed(RewardStageTimeIndex),bins);
+        discretedSpeed = bins(DisIndSpeed);
+        NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(RewardStageTimeIndex);
+
+        clear AvgSpeed SEMSpeed
+        for i = 1:length(bins)
+            AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
+            SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
+        end
+
+        figure;
+        ax(1) = subplot(2,1,1); hold on;
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural - Reward stage")
+        xlabel('Speed')
+        ylabel('Neural')
+
+        ax(2) = subplot(2,1,2); hold on;
+        scatter(Z_Com_speed(RewardStageTimeIndex),NeuralTimeIndexed,1,DisIndSpeed)
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural")
+        xlabel('Speed')
+        ylabel('Neural')
+        linkaxes([ax(1),ax(2)],'x')
+
+        %% Out reward stage
+        bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
+        DisIndSpeed = discretize(Z_Com_speed(OutRewardStageTimeIndex),bins);
+        discretedSpeed = bins(DisIndSpeed);
+        NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(OutRewardStageTimeIndex);
+
+        clear AvgSpeed SEMSpeed
+        for i = 1:length(bins)
+            AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
+            SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
+        end
+
+        figure;
+        ax(1) = subplot(2,1,1); hold on;
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural - Outside Reward stage")
+        xlabel('Speed')
+        ylabel('Neural')
+
+        ax(2) = subplot(2,1,2); hold on;
+        scatter(Z_Com_speed(OutRewardStageTimeIndex),NeuralTimeIndexed,1,DisIndSpeed)
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural")
+        xlabel('Speed')
+        ylabel('Neural')
+        linkaxes([ax(1),ax(2)],'x')
+
+        %% Outside Reward stage and shock
+        % TimeIndex ==> around shock
+        % OutTimeIndex
+        % RewardStageTimeIndex ==> before first sound
+        % OutRewardStageTimeIndex
+
+        OutsideRewardAndShock = setdiff(OutRewardStageTimeIndex,TimeIndex);
+
+        bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
+        DisIndSpeed = discretize(Z_Com_speed(OutsideRewardAndShock),bins);
+        discretedSpeed = bins(DisIndSpeed);
+        NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(OutsideRewardAndShock);
+
+        clear AvgSpeed SEMSpeed
+        for i = 1:length(bins)
+            AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
+            SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
+        end
+
+        figure;
+        ax(1) = subplot(2,1,1); hold on;
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural - Outside Reward stage and shock")
+        xlabel('Speed')
+        ylabel('Neural')
+
+        ax(2) = subplot(2,1,2); hold on;
+        scatter(Z_Com_speed(OutsideRewardAndShock),NeuralTimeIndexed,1,DisIndSpeed)
+        shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
+        plot(bins,AvgSpeed,'-k','LineWidth',2)
+        title("Binning Speed see Neural")
+        xlabel('Speed')
+        ylabel('Neural')
+        linkaxes([ax(1),ax(2)],'x')
+
+        %% Around Shock, non-shock, reward speeed-neural correlation (speed > zscore == 2)
+
+        % RewardStageTimeIndex
+        % TimeIndex
+        % OutsideRewardAndShock'
+        speedInd = find(Z_Com_speed>0);
+
+        figure; hold on;
+        ind = intersect(RewardStageTimeIndex,speedInd);
+        scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1),'DisplayName','RewardStageTimeIndex')
+        A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
+        [rcof,pval]=corrcoef(A,B);
+        text(0.2,0.9,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
+        text(0.2,0.9-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+        C=regress(B',[repmat(1,numel(A),1),A']);
+        plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
+
+        ind = intersect(TimeIndex,speedInd);
+        scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1)*2,'DisplayName','TimeIndex')
+        A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
+        [rcof,pval]=corrcoef(A,B);
+        text(0.2,0.7,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
+        text(0.2,0.7-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+        C=regress(B',[repmat(1,numel(A),1),A']);
+        plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
+
+        ind = intersect(OutsideRewardAndShock,speedInd);
+        scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1)*3,'DisplayName','OutsideRewardAndShock')
+        A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
+        [rcof,pval]=corrcoef(A,B);
+        text(0.2,0.5,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
+        text(0.2,0.5-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+        C=regress(B',[repmat(1,numel(A),1),A']);
+        plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
+
+        title("Binning Speed see Neural in Around Shock, non-shock, reward group")
+        xlabel('Speed')
+        ylabel('Neural')
+        legend
+
     end
-    RewardStageTimeIndex = [1:CSidx(1)]';
-    OutRewardStageTimeIndex = [CSidx(1)+1:numel(NeuralTime)]';
 
-    bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
-    DisIndSpeed = discretize(Z_Com_speed(RewardStageTimeIndex),bins);
+    %% Maybe neural higher in rearing
+    Z_axis = Com_denoised(:,3); 
+    figure;
+    subplot(2,1,1);
+    plot(Z_axis)
+    subplot(2,1,2);
+    hist(Z_axis)
+
+    HighIndex = find(Z_axis>35);
+
+    bins = [min(Z_axis)-1:1:max(Z_axis)+1];
+    DisIndSpeed = discretize(Z_axis,bins);
     discretedSpeed = bins(DisIndSpeed);
-    NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(RewardStageTimeIndex);
+    NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass;
 
-    clear AvgSpeed SEMSpeed
+    clear Avg SEM
     for i = 1:length(bins)
-        AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
-        SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
+        Avg(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
+        SEM(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
     end
 
     figure;
     ax(1) = subplot(2,1,1); hold on;
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural - Reward stage")
-    xlabel('Speed')
+    shadedErrorBar(bins,Avg,SEM,{'-b','color',[0,0,0]},0.5)
+    plot(bins,Avg,'-k','LineWidth',2)
+    title("Binning Zaxis see Neural")
+    xlabel('Z_axis')
     ylabel('Neural')
 
     ax(2) = subplot(2,1,2); hold on;
-    scatter(Z_Com_speed(RewardStageTimeIndex),NeuralTimeIndexed,1,DisIndSpeed)
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural")
-    xlabel('Speed')
+    scatter(Z_axis,NeuralTimeIndexed,1,DisIndSpeed)
+    shadedErrorBar(bins,Avg,SEM,{'-b','color',[0,0,0]},0.5)
+    plot(bins,Avg,'-k','LineWidth',2)
+    title("Binning Zaxis see Neural")
+    xlabel('Z_axis')
     ylabel('Neural')
     linkaxes([ax(1),ax(2)],'x')
-
-    %% Out reward stage
-    bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
-    DisIndSpeed = discretize(Z_Com_speed(OutRewardStageTimeIndex),bins);
-    discretedSpeed = bins(DisIndSpeed);
-    NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(OutRewardStageTimeIndex);
-
-    clear AvgSpeed SEMSpeed
-    for i = 1:length(bins)
-        AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
-        SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
-    end
-
-    figure;
-    ax(1) = subplot(2,1,1); hold on;
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural - Outside Reward stage")
-    xlabel('Speed')
-    ylabel('Neural')
-
-    ax(2) = subplot(2,1,2); hold on;
-    scatter(Z_Com_speed(OutRewardStageTimeIndex),NeuralTimeIndexed,1,DisIndSpeed)
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural")
-    xlabel('Speed')
-    ylabel('Neural')
-    linkaxes([ax(1),ax(2)],'x')
-
-    %% Outside Reward stage and shock
-    % TimeIndex ==> around shock
-    % OutTimeIndex
-    % RewardStageTimeIndex ==> before first sound
-    % OutRewardStageTimeIndex
-
-    OutsideRewardAndShock = setdiff(OutRewardStageTimeIndex,TimeIndex);
-
-    bins = [min(Z_Com_speed)-1:1:max(Z_Com_speed)+1];
-    DisIndSpeed = discretize(Z_Com_speed(OutsideRewardAndShock),bins);
-    discretedSpeed = bins(DisIndSpeed);
-    NeuralTimeIndexed = Z_Delat_Chan_GCamP_highpass(OutsideRewardAndShock);
-
-    clear AvgSpeed SEMSpeed
-    for i = 1:length(bins)
-        AvgSpeed(i) = mean(NeuralTimeIndexed(find(DisIndSpeed==i)));
-        SEMSpeed(i) = std(NeuralTimeIndexed(find(DisIndSpeed==i)))./sqrt(numel(find(DisIndSpeed==i)));
-    end
-
-    figure;
-    ax(1) = subplot(2,1,1); hold on;
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural - Outside Reward stage and shock")
-    xlabel('Speed')
-    ylabel('Neural')
-
-    ax(2) = subplot(2,1,2); hold on;
-    scatter(Z_Com_speed(OutsideRewardAndShock),NeuralTimeIndexed,1,DisIndSpeed)
-    shadedErrorBar(bins,AvgSpeed,SEMSpeed,{'-b','color',[0,0,0]},0.5)
-    plot(bins,AvgSpeed,'-k','LineWidth',2)
-    title("Binning Speed see Neural")
-    xlabel('Speed')
-    ylabel('Neural')
-    linkaxes([ax(1),ax(2)],'x')
-
-    %% Around Shock, non-shock, reward speeed-neural correlation (speed > zscore == 2)
-
-    % RewardStageTimeIndex
-    % TimeIndex
-    % OutsideRewardAndShock'
-    speedInd = find(Z_Com_speed>0);
 
     figure; hold on;
-    ind = intersect(RewardStageTimeIndex,speedInd);
-    scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1),'DisplayName','RewardStageTimeIndex')
-    A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
-    [rcof,pval]=corrcoef(A,B);
-    text(0.2,0.9,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
-    text(0.2,0.9-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
-    C=regress(B',[repmat(1,numel(A),1),A']);
-    plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
-
-    ind = intersect(TimeIndex,speedInd);
-    scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1)*2,'DisplayName','TimeIndex')
-    A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
+    ind = HighIndex;
+    scatter(Z_axis(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1)*2,'DisplayName','TimeIndex')
+    A = Z_axis(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
     [rcof,pval]=corrcoef(A,B);
     text(0.2,0.7,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
     text(0.2,0.7-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
     C=regress(B',[repmat(1,numel(A),1),A']);
     plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
-
-    ind = intersect(OutsideRewardAndShock,speedInd);
-    scatter(Z_Com_speed(ind),Z_Delat_Chan_GCamP_highpass(ind),1,ones(length(ind),1)*3,'DisplayName','OutsideRewardAndShock')
-    A = Z_Com_speed(ind)'; B = Z_Delat_Chan_GCamP_highpass(ind)';
-    [rcof,pval]=corrcoef(A,B);
-    text(0.2,0.5,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
-    text(0.2,0.5-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
-    C=regress(B',[repmat(1,numel(A),1),A']);
-    plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
-
-    title("Binning Speed see Neural in Around Shock, non-shock, reward group")
-    xlabel('Speed')
+    title("Correlation between Zaxis and Neural")
+    xlabel('Z_axis')
     ylabel('Neural')
-    legend
+
+    figure; hold on;
+    plot(Z_Delat_Chan_GCamP_highpass,'-k')
+    plot(zscore(Z_axis),'-r')
+    title("Correlation between Zaxis and Neural")
 
     %% save all figure
     FolderName = figurepath;   % Your destination folder
@@ -693,8 +771,8 @@ for session = 9:length(files) % [1:7,9:length(files)] % [1,4:6,10:length(files)]
         FigHandle = FigList(iFig);
         saveas(FigHandle, fullfile(FolderName, strcat(num2str(session,'%02.f'),"_",sessionName, num2str(iFig,'%03.f'),'.jpg')));
     end
-    
+
     %%
     close all
-    clearvars -except figurepath files session
+    clearvars -except figurepath files session ProjectName Stimuli SessionsID
 end
