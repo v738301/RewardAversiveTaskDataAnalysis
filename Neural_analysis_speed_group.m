@@ -43,6 +43,7 @@ if ProjectName == "FC"
         SessionsID = [1:3,5,7,8,10:length(files)];
     end
 elseif ProjectName == "UPS"
+    Stimuli = "Shock";
     SessionsID = [1:length(files)];
 end
 for session = SessionsID
