@@ -1,4 +1,4 @@
-clear all
+clear
 close all
 
 %% main path
@@ -196,6 +196,14 @@ for session = SessionsID
     EventTimeSeries{EventID} = zeros(size(NeuralTime,1),1);
     EventTimeSeries{EventID}(CSidx) = 1;
 
+    UPSIND = [1,3,4,7];
+    PSIND = [2,5,6,8];
+
+    UPSEventID = zeros(size(NeuralTime,1),1);
+    UPSEventID(CSidx(UPSIND)) = 1;
+    PSEventID = zeros(size(NeuralTime,1),1);
+    PSEventID(CSidx(PSIND)) = 1;
+
     %% try to indentify rearing starting points
     figure;
     ax(1) = subplot(2,1,1); hold on;
@@ -215,7 +223,7 @@ for session = SessionsID
     % Find starting points.
     startingIndexes = strfind(highSignal', [0, 1]);
     % Find strat which peaks within 2 secs
-    kk = bsxfun(@plus, startingIndexes', [1:2*FS]);
+    kk = bsxfun(@plus, startingIndexes', [0:2*FS]);
     for i = 1:size(kk,1)
         if sum(ComSmooth(kk(i,:))>HighSpeedTh) == 0
             startingIndexes(i) = NaN;
@@ -229,30 +237,73 @@ for session = SessionsID
     linkaxes([ax(1), ax(2)], 'x')
     RearTimeseries = zeros(length(NeuralTime),1);
     RearTimeseries(startingIndexes) = 1;
+
+    %% discretetized the speed
+    figure; hold on;
+    plot(Com_speed)
+    baseline = median(Com_speed);
+    threshold = baseline + mad(Com_speed);
+    yline(baseline, 'Color', 'k', 'LineWidth', 2)
+    yline(threshold, 'Color', 'r', 'LineWidth', 2)
+    disc_speed = zeros(size(Com_speed));
+    disc_speed(Com_speed > threshold) = 1;
+
+    %% Calculate speed-shock interaction
+    AroundShockTimes = unique(bsxfun(@plus, find(EventTimeSeries{EventID}), 0:5*FS_cam));
+    AroundShockTimesIND = zeros(size(disc_speed));
+    AroundShockTimesIND(AroundShockTimes) = 1;
+    SpeedINTShock = disc_speed;
+    SpeedINTShock(~AroundShockTimesIND) = 0;
+
+    figure; hold on;
+    plot(disc_speed,'k', "DisplayName","discSpeed")
+    plot(AroundShockTimesIND,'r', "DisplayName","AroundShockTimesIND")
+    plot(SpeedINTShock,'g', "DisplayName","SpeedINTShock")
+    legend()
+
     %% B-spline family
     FS_cam = 20;
     Pre = 0*FS_cam;
     Post = 5*FS_cam;
     KernelNum = 10;
     kernelTime = (-Pre:Post)./FS_cam;
-    BsplineAll = spcol([0, 0, 0, linspace(0,1,KernelNum), 1, 1, 1], 4, linspace(0,1,Pre+Post+1));
-    BsplineAll = spcol([0, 0, 0, linspace(0,1,KernelNum), 1, 1], 4, linspace(0,1,Pre+Post+1));
+    %     BsplineAll = spcol([0, 0, 0, linspace(0,1,KernelNum), 1, 1, 1], 4, linspace(0,1,Pre+Post+1));
+    %     BsplineAll = spcol([0, 0, 0, linspace(0,1,KernelNum), 1, 1], 4, linspace(0,1,Pre+Post+1));
     BsplineAll = spcol([0, 0, 0, linspace(0,1,KernelNum), 1], 4, linspace(0,1,Pre+Post+1));
+    %     BsplineAll = spcol([0, linspace(0,1,KernelNum+2), 1], 4, linspace(0,1,Pre+Post+1));
     figure;
     plot(BsplineAll);
 
+    %% conv with bsplie
+    ConvSpeedINTShock = [];
+    ConvSpeed = [];
     ConvShock = [];
+    ConvShockUP = [];
+    ConvShockP = [];
     ConvRearing = [];
     for i = 1:size(BsplineAll,2)
+        ConvSpeedINTShock(:,i) = conv(SpeedINTShock,BsplineAll(:,i)./sum(BsplineAll(:,i)),'full');
+        ConvSpeed(:,i) = conv(disc_speed,BsplineAll(:,i)./sum(BsplineAll(:,i)),'full');
         ConvShock(:,i) = conv(EventTimeSeries{EventID},BsplineAll(:,i),'full');
+        ConvShockUP(:,i) = conv(UPSEventID,BsplineAll(:,i),'full');
+        ConvShockP(:,i) = conv(PSEventID,BsplineAll(:,i),'full');
         ConvRearing(:,i) = conv(RearTimeseries,BsplineAll(:,i),'full');
     end
-    ConvShock = ConvShock(1:length(NeuralTime),:);
-    ConvRearing = ConvRearing(1:length(NeuralTime),:);
+    lags = 0;
+    ConvSpeedINTShock = ConvSpeedINTShock(1+lags:length(NeuralTime)+lags,:);
+    %     ConvShockUP = ConvShockUP(1+lags:length(NeuralTime)+lags,:);
+    %     ConvShockP = ConvShockP(1+lags:length(NeuralTime)+lags,:);
+    ConvSpeed = ConvSpeed(1+lags:length(NeuralTime)+lags,:);
+    ConvShock = ConvShock(1+lags:length(NeuralTime)+lags,:);
+    ConvRearing = ConvRearing(1+lags:length(NeuralTime)+lags,:);
 
     figure; hold on;
     plot(EventTimeSeries{EventID},"k",'LineWidth',2)
-    plot(RearTimeseries,"b",'LineWidth',2)
+    %     plot(UPSEventID,"r",'LineWidth',2)
+    %     plot(PSEventID,"g",'LineWidth',2)
+    %     plot(RearTimeseries,"b",'LineWidth',2)
+    %     plot(ConvSpeed)
+    plot(ConvSpeedINTShock)
     plot(ConvShock)
     plot(ConvRearing)
 
@@ -262,26 +313,45 @@ for session = SessionsID
     Com_Accl = [Com_Accl(1,1);Com_Accl];
 
     %% GLM and plot ezch contributions
-    Dmatrix = zscore([Com_speed,ConvShock,ConvRearing]);
+    %     Dmatrix = zscore([Com_speed,ConvShock,ConvRearing]);
+    %     Dmatrix = zscore([ConvSpeed,ConvShockUP,ConvShockP,ConvRearing]);
+    Dmatrix = zscore([ConvSpeed,ConvShock,ConvRearing]);
+    %     Dmatrix = zscore([ConvShock,ConvRearing]);
+    %     Dmatrix = zscore([ConvSpeedINTShock,ConvShockUP,ConvShockP,ConvRearing]);
+    %     Dmatrix = zscore([ConvSpeedINTShock,ConvShock,ConvRearing]);
     ySignal = zscore(Delat_Chan_GCamP_highpass);
+
+    mode = 1;
+    switch mode
+        case 1
+            SpeedIND = [2:11];
+            ShockIND = [12:21];
+            RearIND = [22:31];
+        case 2
+            SpeedIND = [2:11];
+            ShockINDUP = [12:21];
+            ShockINDP = [22:31];
+            RearIND = [32:41];
+        case 3
+            ShockIND = [2:11];
+            RearIND = [12:21];
+    end
+
     tryRidge = 0;
     if tryRidge == 1
         B = ridge(ySignal,Dmatrix,10,0);
-        %         B = lasso(Dmatrix,y);
-        %         [B,FitInfo] = lasso(Dmatrix,y,'Lambda',1e-5);
         Estimate = B;
-        %         Pvalue = mdl.Coefficients.pValue;
-        %         SE =mdl.Coefficients.SE;
     else
         mdl = fitglm(Dmatrix,ySignal);
         Estimate = mdl.Coefficients.Estimate;
         Pvalue = mdl.Coefficients.pValue;
-        SE =mdl.Coefficients.SE;
+        SE = mdl.Coefficients.SE;
         ypred = predict(mdl,Dmatrix);
-        %         ypred = Estimate' * [ones(size(Dmatrix,1),1),Dmatrix]';
-        ypredSpeed = Estimate(2)' * [Dmatrix(:,1)]';
-        ypredShock = Estimate(3:12)' * [Dmatrix(:,2:11)]';
-        ypredRearing = Estimate(13:22)' * [Dmatrix(:,12:21)]';
+        ypredSpeed = Estimate(SpeedIND)' * [Dmatrix(:,SpeedIND-1)]';
+        ypredShock = Estimate(ShockIND)' * [Dmatrix(:,ShockIND-1)]';
+%         ypredShockUP = Estimate(ShockINDUP)' * [Dmatrix(:,ShockINDUP-1)]';
+%         ypredShockP = Estimate(ShockINDP)' * [Dmatrix(:,ShockINDP-1)]';
+        ypredRearing = Estimate(RearIND)' * [Dmatrix(:,RearIND-1)]';
     end
 
     figure; hold on;
@@ -297,9 +367,12 @@ for session = SessionsID
     Peak=max(ySignal)*0.5;
     figure; hold on;
     plot(NeuralTime,ySignal, "DisplayName","Y")
+    %     plot(NeuralTime,disc_speed, "DisplayName","Disc-speed")
     plot(NeuralTime,ypred, "DisplayName","ypred")
     plot(NeuralTime,ypredSpeed + Estimate(1), "DisplayName","ypredSpeed")
     plot(NeuralTime,ypredShock + Estimate(1), "DisplayName","ypredShock")
+    %     plot(NeuralTime,ypredShockUP + Estimate(1), "DisplayName","ypredShock")
+    %     plot(NeuralTime,ypredShockP + Estimate(1), "DisplayName","ypredShock")
     plot(NeuralTime,ypredRearing + Estimate(1), "DisplayName","ypredRearing")
     plot(NeuralTime,EventTimeSeries{EventID}*Peak,"k",'LineWidth',2, "DisplayName","Shock")
     plot(NeuralTime,RearTimeseries*Peak,"b",'LineWidth',2, "DisplayName","Rearing")
@@ -338,13 +411,35 @@ for session = SessionsID
     xlabel('ypred')
     ylabel('Delat_Chan_GCamP_highpass')
 
-    AvgKernelShock(session,:) = Estimate(3:12)'*BsplineAll';
-    AvgKernelRearing(session,:) = Estimate(13:22)'*BsplineAll';
+    AvgKernelSpeed(session,:) = Estimate(SpeedIND)'*BsplineAll';
+    AvgKernelShock(session,:) = Estimate(ShockIND)'*BsplineAll';
+    %     AvgKernelShockUP(session,:) = Estimate(ShockINDUP)'*BsplineAll';
+    %     AvgKernelShockP(session,:) = Estimate(ShockINDP)'*BsplineAll';
+    AvgKernelRearing(session,:) = Estimate(RearIND)'*BsplineAll';
+    %
+    figure; hold on;
+    plot(kernelTime,AvgKernelSpeed(session,:))
+    xlabel('Time (s)', 'FontSize',18)
+    ylabel('Kernel','fontsize', 18);
+    title("AvgKernelSpeed")
+
     figure; hold on;
     plot(kernelTime,AvgKernelShock(session,:))
     xlabel('Time (s)', 'FontSize',18)
     ylabel('Kernel','fontsize', 18);
     title("AvgKernelShock")
+
+    %     figure; hold on;
+    %     plot(kernelTime,AvgKernelShockUP(session,:))
+    %     xlabel('Time (s)', 'FontSize',18)
+    %     ylabel('Kernel','fontsize', 18);
+    %     title("AvgKernelShockUP")
+    %
+    %     figure; hold on;
+    %     plot(kernelTime,AvgKernelShockP(session,:))
+    %     xlabel('Time (s)', 'FontSize',18)
+    %     ylabel('Kernel','fontsize', 18);
+    %     title("AvgKernelShockP")
 
     figure; hold on;
     plot(kernelTime,AvgKernelRearing(session,:))
@@ -353,65 +448,222 @@ for session = SessionsID
     title("AvgKernelRearing")
 
     %% FIX other event permute rearing and see the kernel
-    for iperm = 1:100
-        iperm
-        ConvRearingPerm = [];
-        for i = 1:size(BsplineAll,2)
-            ConvRearingPerm(:,i) = conv(RearTimeseries(randperm(length(RearTimeseries))),BsplineAll(:,i),'full');
+    DoPermute = 0;
+    if DoPermute
+        % for the Speed
+        for iperm = 1:100
+            iperm
+            ConvSpeedPerm = [];
+            for i = 1:size(BsplineAll,2)
+                ConvSpeedPerm(:,i) = conv(disc_speed(randperm(length(disc_speed))),BsplineAll(:,i),'full');
+            end
+            ConvSpeedPerm = ConvSpeedPerm(1:length(NeuralTime),:);
+            Dmatrix(:,SpeedIND-1) = zscore(ConvSpeedPerm);
+            mdl = fitglm(Dmatrix,ySignal);
+            Estimate = mdl.Coefficients.Estimate;
+            ConvSpeedPermPerm(iperm,:) = Estimate(SpeedIND)'*BsplineAll';
         end
-        ConvRearingPerm = ConvRearingPerm(1:length(NeuralTime),:);
-        Dmatrix = zscore([Com_speed,ConvShock,ConvRearingPerm]);
-        ySignal = zscore(Delat_Chan_GCamP_highpass);
-        mdl = fitglm(Dmatrix,ySignal);
-        Estimate = mdl.Coefficients.Estimate;
-        AvgKernelRearingPerm(iperm,:) = Estimate(13:22)'*BsplineAll';
-    end
-    figure; hold on;
-    shadedErrorBar(kernelTime, mean(AvgKernelRearingPerm),1.96*std(AvgKernelRearingPerm),{'-k','color',[0,0,0]},0.5)
-%     plot(kernelTime,AvgKernelRearingPerm,'color',[0.8,0.8,0.8])
-    plot(kernelTime,AvgKernelRearing(session,:))
-    xlabel('Time (s)', 'FontSize',18)
-    ylabel('Kernel','fontsize', 18);
-    title("AvgKernelRearing vs AvgKernelRearingPerm")
+        figure; hold on;
+        shadedErrorBar(kernelTime, mean(ConvSpeedPermPerm),1.96*std(ConvSpeedPermPerm),{'-b','color',[0,0,0]},0.5)
+        plot(kernelTime,AvgKernelSpeed(session,:))
+        xlabel('Time (s)', 'FontSize',18)
+        ylabel('Kernel','fontsize', 18);
+        title("AvgKernelSpeed vs Permutations")
 
-    % and for the shocks
-    for iperm = 1:100
-        iperm
-        ConvShockPerm = [];
-        for i = 1:size(BsplineAll,2)
-            ConvShockPerm(:,i) = conv(EventTimeSeries{EventID}(randperm(length(EventTimeSeries{EventID}))),BsplineAll(:,i),'full');
+        % for the shocks
+        for iperm = 1:100
+            iperm
+            ConvShockPerm = [];
+            for i = 1:size(BsplineAll,2)
+                ConvShockPerm(:,i) = conv(EventTimeSeries{EventID}(randperm(length(EventTimeSeries{EventID}))),BsplineAll(:,i),'full');
+            end
+            ConvShockPerm = ConvShockPerm(1:length(NeuralTime),:);
+            Dmatrix(:,ShockIND-1) = zscore(ConvShockPerm);
+            mdl = fitglm(Dmatrix,ySignal);
+            Estimate = mdl.Coefficients.Estimate;
+            AvgKernelShockPerm(iperm,:) = Estimate(ShockIND)'*BsplineAll';
         end
-        ConvShockPerm = ConvShockPerm(1:length(NeuralTime),:);
-        Dmatrix = zscore([Com_speed,ConvShockPerm,ConvRearing]);
-        ySignal = zscore(Delat_Chan_GCamP_highpass);
-        mdl = fitglm(Dmatrix,ySignal);
-        Estimate = mdl.Coefficients.Estimate;
-        AvgKernelShockPerm(iperm,:) = Estimate(3:12)'*BsplineAll';
-    end
-    figure; hold on;
-    shadedErrorBar(kernelTime, mean(AvgKernelShockPerm),1.96*std(AvgKernelShockPerm),{'-b','color',[0,0,0]},0.5)
-%     plot(kernelTime,AvgKernelShockPerm,'color',[0.8,0.8,0.8])
-    plot(kernelTime,AvgKernelShock(session,:))
-    xlabel('Time (s)', 'FontSize',18)
-    ylabel('Kernel','fontsize', 18);
-    title("AvgKernelShock vs AvgKernelShockPerm")
+        figure; hold on;
+        shadedErrorBar(kernelTime, mean(AvgKernelShockPerm),1.96*std(AvgKernelShockPerm),{'-b','color',[0,0,0]},0.5)
+        plot(kernelTime,AvgKernelShock(session,:))
+        xlabel('Time (s)', 'FontSize',18)
+        ylabel('Kernel','fontsize', 18);
+        title("AvgKernelShock vs Permutations")
 
+
+        %     % for the UPshocks
+        %     for iperm = 1:100
+        %         iperm
+        %         ConvUPShockPerm = [];
+        %         for i = 1:size(BsplineAll,2)
+        %             ConvUPShockPerm(:,i) = conv(UPSEventID(randperm(length(UPSEventID))),BsplineAll(:,i),'full');
+        %         end
+        %         ConvUPShockPerm = ConvUPShockPerm(1:length(NeuralTime),:);
+        %         Dmatrix(:,ShockINDUP-1) = zscore(ConvUPShockPerm);
+        %         mdl = fitglm(Dmatrix,ySignal);
+        %         Estimate = mdl.Coefficients.Estimate;
+        %         AvgKernelUPShockPerm(iperm,:) = Estimate(ShockINDUP)'*BsplineAll';
+        %     end
+        %     figure; hold on;
+        %     shadedErrorBar(kernelTime, mean(AvgKernelUPShockPerm),1.96*std(AvgKernelUPShockPerm),{'-b','color',[0,0,0]},0.5)
+        %     plot(kernelTime,AvgKernelShockUP(session,:))
+        %     xlabel('Time (s)', 'FontSize',18)
+        %     ylabel('Kernel','fontsize', 18);
+        %     title("AvgKernelShock vs Permutations")
+        %
+        %     % for the Pshocks
+        %     for iperm = 1:100
+        %         iperm
+        %         ConvPShockPerm = [];
+        %         for i = 1:size(BsplineAll,2)
+        %             ConvPShockPerm(:,i) = conv(PSEventID(randperm(length(PSEventID))),BsplineAll(:,i),'full');
+        %         end
+        %         ConvPShockPerm = ConvPShockPerm(1:length(NeuralTime),:);
+        %         Dmatrix(:,ShockINDP-1) = zscore(ConvPShockPerm);
+        %         mdl = fitglm(Dmatrix,ySignal);
+        %         Estimate = mdl.Coefficients.Estimate;
+        %         AvgKernelPShockPerm(iperm,:) = Estimate(ShockINDP)'*BsplineAll';
+        %     end
+        %     figure; hold on;
+        %     shadedErrorBar(kernelTime, mean(AvgKernelPShockPerm),1.96*std(AvgKernelPShockPerm),{'-b','color',[0,0,0]},0.5)
+        %     plot(kernelTime,AvgKernelShockP(session,:))
+        %     xlabel('Time (s)', 'FontSize',18)
+        %     ylabel('Kernel','fontsize', 18);
+        %     title("AvgKernelShock vs Permutations")
+
+        % for the rearing
+        for iperm = 1:100
+            iperm
+            ConvRearingPerm = [];
+            for i = 1:size(BsplineAll,2)
+                ConvRearingPerm(:,i) = conv(RearTimeseries(randperm(length(RearTimeseries))),BsplineAll(:,i),'full');
+            end
+            ConvRearingPerm = ConvRearingPerm(1:length(NeuralTime),:);
+            Dmatrix(:,RearIND-1) = zscore(ConvRearingPerm);
+            mdl = fitglm(Dmatrix,ySignal);
+            Estimate = mdl.Coefficients.Estimate;
+            AvgKernelRearingPerm(iperm,:) = Estimate(RearIND)'*BsplineAll';
+        end
+        figure; hold on;
+        shadedErrorBar(kernelTime, mean(AvgKernelRearingPerm),1.96*std(AvgKernelRearingPerm),{'-k','color',[0,0,0]},0.5)
+        plot(kernelTime,AvgKernelRearing(session,:))
+        xlabel('Time (s)', 'FontSize',18)
+        ylabel('Kernel','fontsize', 18);
+        title("AvgKernelRearing vs Permutations")
+    end
+    %% residual analysis
+    % fit speed
+
+    figure; hold on;
+    plot(ConvShock)
+
+    Dmatrix = zscore([ConvShock]);
+    ySignal = zscore([Com_speed]);;
+
+    mdl = fitglm(Dmatrix,ySignal);
+    Estimate = mdl.Coefficients.Estimate;
+    Pvalue = mdl.Coefficients.pValue;
+    SE = mdl.Coefficients.SE;
+    ypred2 = predict(mdl,Dmatrix);
+
+    figure; hold on;
+    errorbar(Estimate,SE,"LineStyle","none")
+    bar(Estimate)
+    SigId = find(Pvalue < 0.05);
+    plot(SigId,max(Estimate)*1.5,"r*")
+
+    SpeedIND = [2:11];
+    ypredSpeed = Estimate(SpeedIND)' * [Dmatrix(:,SpeedIND-1)]';
+
+    Peak=max(ySignal)*0.5;
+    figure; hold on;
+    plot(NeuralTime,ConvShock, "DisplayName","ConvShock")
+    plot(NeuralTime,ySignal, "DisplayName","Y")
+    plot(NeuralTime,ypred2, "DisplayName","ypred")
+    plot(NeuralTime,ypredSpeed + Estimate(1), "DisplayName","ypredSpeed")
+    legend()
+
+    shockTime = find(EventTimeSeries{EventID});
+    shockPeriod = bsxfun(@plus, shockTime, 0:5*FS_cam);
+
+
+    allSpeedAroundShock = [];
+    AvgKernelComSpeed_temp = zeros(1,size(shockPeriod,2));
+    for i = 1:length(shockTime)
+        allSpeedAroundShock(:,i) = ySignal(shockPeriod(i,:));
+        AvgKernelComSpeed_temp = AvgKernelComSpeed_temp + ypredSpeed(shockPeriod(i,:));
+    end
+    AvgKernelComSpeed(session,:) = AvgKernelComSpeed_temp./length(shockTime);
+
+    ySignal = zscore(Delat_Chan_GCamP_highpass);
+    allShockResponse = [];
+    AvgKernelShockOrgScale_temp = zeros(size(shockPeriod));
+    for i = 1:length(shockTime)
+        allShockResponse(:,i) = ySignal(shockPeriod(i,:));
+        AvgKernelShockOrgScale_temp(i,:) = AvgKernelShockOrgScale_temp(i,:) + ypred(shockPeriod(i,:))';
+    end
+    AvgKernelShockOrgScale(session,:) = mean(AvgKernelShockOrgScale_temp,1);
+    Speedcolor = parula(length(shockTime));
+
+    figure;
+    colororder(Speedcolor)
+    subplot(2,2,1); hold on;
+    plot(allSpeedAroundShock,'LineWidth',2)
+    plot(AvgKernelComSpeed(session,:),'r-','LineWidth',2)
+
+    subplot(2,2,2); hold on;
+    allSpeedAroundShockResidual = bsxfun(@minus, allSpeedAroundShock , AvgKernelComSpeed(session,:)');
+    plot(allSpeedAroundShockResidual,'LineWidth',2)
+
+    subplot(2,2,3); hold on;
+    plot(allShockResponse,'LineWidth',2)
+    plot(AvgKernelShockOrgScale_temp','r-','LineWidth',2)
+
+    subplot(2,2,4); hold on;
+    allShockResponseResidual = allShockResponse - AvgKernelShockOrgScale_temp';
+    plot(allShockResponseResidual,'LineWidth',2)
+
+    figure; hold on;
+    colororder(Speedcolor)
+    allResidualPoints_temp = [sum(allSpeedAroundShockResidual,1);sum(allShockResponseResidual,1)];
+    scatter(allResidualPoints_temp(1,:),allResidualPoints_temp(2,:),50,Speedcolor,'filled')
+    A = allResidualPoints_temp(1,:); B = allResidualPoints_temp(2,:);
+    [rcof,pval]=corrcoef(A,B);
+    text(0.2,0.3,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
+    text(0.2,0.3-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+    C=regress(B',[repmat(1,numel(A),1),A']);
+    plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
+    title("Correlation between Neural residual and Speed residual")
+    xlabel('Speed residual')
+    ylabel('Neural residual')
+    xlim([-150,150])
+    ylim([-250,150])
+
+    allResidualPoints{session}.XY = allResidualPoints_temp;
+    allResidualPoints{session}.regress = [linspace(min(A),max(A),11);linspace(min(A),max(A),11).*C(2)+C(1)];
     %% save all figure
-    FolderName = figurepath;   % Your destination fold
-    FigList = findobj(allchild(0), 'flat', 'Type', 'figure');
-    sessionName = file(1:end-4);
-    for iFig = 1:length(FigList)
-        FigHandle = FigList(iFig);
-        saveas(FigHandle, fullfile(FolderName, strcat(num2str(session,'%02.f'),"_", file,"_","GLM_analysis", num2str(iFig,'%02.f'),'.jpg')));
-    end
-
-    close all
+    %     FolderName = figurepath;   % Your destination fold
+    %     FigList = findobj(allchild(0), 'flat', 'Type', 'figure');
+    %     sessionName = file(1:end-4);
+    %     for iFig = 1:length(FigList)
+    %         FigHandle = FigList(iFig);
+    %         saveas(FigHandle, fullfile(FolderName, strcat(num2str(session,'%02.f'),"_", file,"_","GLM_analysis", num2str(iFig,'%02.f'),'.jpg')));
+    %     end
+    %     close all
     %     clearvars -except figurepath files session ProjectName Stimuli SessionsID AvgKernel
 end
 
 fig = figure; hold on;
 shadedErrorBar(kernelTime, mean(AvgKernelShock),std(AvgKernelShock)./sqrt(size(AvgKernelShock,1)),{'-b','color',[0,0,0]},0.5)
 saveas(fig, fullfile(figurepath, strcat("ShockKernelAvg",'.jpg')));
+
+% fig = figure; hold on;
+% shadedErrorBar(kernelTime, mean(AvgKernelShockUP),std(AvgKernelShockUP)./sqrt(size(AvgKernelShockUP,1)),{'-b','color',[0,0,0]},0.5)
+% saveas(fig, fullfile(figurepath, strcat("UPShockKernelAvg",'.jpg')));
+% 
+% fig = figure; hold on;
+% shadedErrorBar(kernelTime, mean(AvgKernelShockP),std(AvgKernelShockP)./sqrt(size(AvgKernelShockP,1)),{'-b','color',[0,0,0]},0.5)
+% saveas(fig, fullfile(figurepath, strcat("PShockKernelAvg",'.jpg')));
 
 fig = figure; hold on;
 shadedErrorBar(kernelTime, mean(AvgKernelRearing),std(AvgKernelRearing)./sqrt(size(AvgKernelRearing,1)),{'-b','color',[0,0,0]},0.5)
@@ -421,3 +673,28 @@ fig = figure; hold on;
 errorbar(mean(AllEstimate),std(AllEstimate)./sqrt(size(AllEstimate,1)),"LineStyle","none")
 bar(mean(AllEstimate))
 saveas(fig, fullfile(figurepath, strcat("AllEstimateAvg",'.jpg')));
+
+%% residual analysis across sessiones
+Sessioncolor = parula(length(allResidualPoints));
+figure; hold on;
+for i = 1:length(allResidualPoints)
+    XY(:,:,i) = allResidualPoints{i}.XY;
+    Reg = allResidualPoints{i}.regress;
+    ConvColor = Sessioncolor(i,:)*0.3+[1,1,1]*0.7;
+    scatter(XY(1,:,i),XY(2,:,i),50,Sessioncolor(i,:),'filled')
+    plot(Reg(1,:),Reg(2,:),'--','linewidth',3,'color',ConvColor);
+end
+
+XY2 = reshape(XY,2,size(XY,2)*size(XY,3));
+A = XY2(1,:); B = XY2(2,:);
+[rcof,pval]=corrcoef(A,B);
+text(0.2,0.3,['R = ',num2str(round(rcof(1,2),3))],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold');
+% text(0.2,0.3-0.08,['p < 10^','{',num2str(ceil(log10(pval(2,1)))),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+text(0.2,0.3-0.08,['p = ','{',num2str(round(pval(2,1),4)),'}'],'units','normalized','FontSize',12,'HorizontalAlignment','left','FontWeight','bold')
+C=regress(B',[repmat(1,numel(A),1),A']);
+plot(linspace(min(A),max(A),11),linspace(min(A),max(A),11).*C(2)+C(1),'--','linewidth',3);
+title("Correlation between Neural residual and Speed residual")
+xlabel('Speed residual')
+ylabel('Neural residual')
+xlim([-250,250])
+ylim([-250,150])
